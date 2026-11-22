@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.0
-	github.com/go-jose/go-jose/v4 v4.1.3
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/go-webauthn/webauthn v0.13.4
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/crypto v0.59.0
