@@ -1,0 +1,13 @@
+description: Reference knowledge-graph memory server, run locally over stdio.
+docs: https://github.com/modelcontextprotocol/servers/tree/main/src/memory
+server:
+  name: Memory
+  prefix: memory
+  transport: stdio
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-memory"]
+  auth_kind: none
+rules:
+  - { tool: "memory__*", when: read_only, action: allow }
+  - { tool: "memory__delete_*", action: ask }
+  - { tool: "memory__*", action: allow }

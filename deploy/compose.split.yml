@@ -1,0 +1,68 @@
+name: mcp-gateway-split
+x-common: &common
+  image: ${GW_IMAGE:-mcp-gateway:local}
+  build: { context: .., dockerfile: Dockerfile }
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  extra_hosts: ["host.docker.internal:host-gateway"]
+  networks: [internal]
+x-env: &env
+  GW_PUBLIC_URL: ${GW_PUBLIC_URL:-http://localhost:8787}
+  GW_INTERNAL_TOKEN: ${GW_INTERNAL_TOKEN:?set GW_INTERNAL_TOKEN (gw keygen internal)}
+  GW_AUTH_URL: http://auth:8787
+  GW_VAULT_URL: http://vault:8787
+  GW_CONTROL_URL: http://control:8787
+  GW_GATEWAY_URL: http://gateway:8787
+services:
+  vault:
+    <<: *common
+    environment:
+      <<: *env
+      GW_SERVICES: vault
+      GW_KEY_PROVIDER: env
+      GW_MASTER_KEY: ${GW_MASTER_KEY:?set GW_MASTER_KEY (gw keygen master)}
+    volumes: ["vault-data:/data"]
+  control:
+    <<: *common
+    environment:
+      <<: *env
+      GW_SERVICES: control
+      GW_WEBHOOK_URL: ${GW_WEBHOOK_URL:-}
+    volumes: ["control-data:/data"]
+  auth:
+    <<: *common
+    environment:
+      <<: *env
+      GW_SERVICES: auth
+      GW_KEY_PROVIDER: env
+      GW_MASTER_KEY: ${GW_MASTER_KEY}
+      GW_BOOTSTRAP_ADMIN_KEY: ${GW_BOOTSTRAP_ADMIN_KEY:-}
+    volumes: ["auth-data:/data"]
+    depends_on: { control: { condition: service_healthy } }
+  gateway:
+    <<: *common
+    environment:
+      <<: *env
+      GW_SERVICES: gateway
+    volumes: ["gateway-data:/data"]
+    deploy: { replicas: 2 }
+    depends_on:
+      control: { condition: service_healthy }
+      auth: { condition: service_healthy }
+      vault: { condition: service_healthy }
+  edge:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports: ["127.0.0.1:8787:8787"]
+    volumes: ["./Caddyfile.split:/etc/caddy/Caddyfile:ro"]
+    networks: [internal]
+    depends_on: [gateway, auth, control]
+networks:
+  internal: {}
+volumes:
+  vault-data: {}
+  control-data: {}
+  auth-data: {}
+  gateway-data: {}

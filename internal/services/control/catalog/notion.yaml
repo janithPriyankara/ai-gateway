@@ -1,0 +1,11 @@
+description: Notion's hosted MCP server (search, read and edit pages and databases). Uses OAuth.
+docs: https://developers.notion.com/docs/mcp
+server:
+  name: Notion
+  prefix: notion
+  transport: http
+  url: https://mcp.notion.com/mcp
+  auth_kind: oauth
+rules:
+  - { tool: "notion__*", when: read_only, action: allow }
+  - { tool: "notion__*", action: ask }

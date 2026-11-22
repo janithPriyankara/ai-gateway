@@ -1,0 +1,25 @@
+name: mcp-gateway
+services:
+  gateway:
+    image: ${GW_IMAGE:-mcp-gateway:local}
+    build: { context: .., dockerfile: Dockerfile }
+    restart: unless-stopped
+    ports: ["127.0.0.1:8787:8787"]
+    environment:
+      GW_PUBLIC_URL: ${GW_PUBLIC_URL:-http://localhost:8787}
+      GW_KEY_PROVIDER: ${GW_KEY_PROVIDER:-file}
+      GW_MASTER_KEY_FILE: /run/secrets/gw_master_key
+      GW_MASTER_KEY: ${GW_MASTER_KEY:-}
+      GW_BOOTSTRAP_ADMIN_KEY: ${GW_BOOTSTRAP_ADMIN_KEY:-}
+      GW_WEBHOOK_URL: ${GW_WEBHOOK_URL:-}
+    secrets: [gw_master_key]
+    volumes: ["gw-data:/data"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+volumes:
+  gw-data: {}
+secrets:
+  gw_master_key:
+    file: ${GW_MASTER_KEY_FILE_HOST:-./secrets/master.key}

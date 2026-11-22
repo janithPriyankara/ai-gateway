@@ -1,0 +1,13 @@
+description: Reference filesystem server, run locally over stdio. Edit the last argument to the folder you want to expose.
+docs: https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
+server:
+  name: Filesystem
+  prefix: fs
+  transport: stdio
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/folder"]
+  auth_kind: none
+rules:
+  - { tool: "fs__*", when: read_only, action: allow }
+  - { tool: "fs__write_*", action: ask }
+  - { tool: "fs__*", action: deny }

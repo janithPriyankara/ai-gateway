@@ -1,0 +1,11 @@
+description: Reference fetch server (download web pages as markdown), run locally over stdio with uvx.
+docs: https://github.com/modelcontextprotocol/servers/tree/main/src/fetch
+server:
+  name: Fetch
+  prefix: fetch
+  transport: stdio
+  command: uvx
+  args: ["mcp-server-fetch"]
+  auth_kind: none
+rules:
+  - { tool: "fetch__*", action: allow }

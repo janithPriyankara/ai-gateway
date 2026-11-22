@@ -1,0 +1,11 @@
+description: Linear's hosted MCP server (issues, projects, comments). Uses OAuth.
+docs: https://linear.app/docs/mcp
+server:
+  name: Linear
+  prefix: linear
+  transport: http
+  url: https://mcp.linear.app/mcp
+  auth_kind: oauth
+rules:
+  - { tool: "linear__*", when: read_only, action: allow }
+  - { tool: "linear__*", action: allow }

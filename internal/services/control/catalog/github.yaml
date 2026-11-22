@@ -1,0 +1,13 @@
+description: GitHub's official remote MCP server (issues, pull requests, code, actions). Authenticate with a fine-grained personal access token.
+docs: https://github.com/github/github-mcp-server
+server:
+  name: GitHub
+  prefix: github
+  transport: http
+  url: https://api.githubcopilot.com/mcp/
+  auth_kind: bearer
+rules:
+  - { tool: "github__*", when: read_only, action: allow }
+  - { tool: "github__merge_*", action: ask }
+  - { tool: "github__delete_*", action: deny }
+  - { tool: "github__*", action: allow }

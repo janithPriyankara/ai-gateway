@@ -1,0 +1,241 @@
+openapi: 3.1.0
+info:
+  title: mcp-gateway Admin API
+  version: "1.0.0"
+  description: |
+    The Admin API behind the dashboard, the CLI and automation (spec CTL-040, CTL-041).
+
+    **Authentication:** a dashboard session cookie (`gw_session`) or an admin API key
+    (`Authorization: Bearer gwa_…`). Mutations made with a session cookie must send the
+    session's CSRF token in `X-CSRF-Token` (from `GET /auth/me`).
+
+    **Roles:** owner > admin > member > viewer. Each operation lists its minimum role in
+    `x-min-role`.
+
+    **Errors:** `{"error": {"code": "...", "message": "..."}}`.
+
+    **Secrets are write-only:** credentials can be set or deleted, never read back (CTL-043).
+  license: { name: Apache-2.0 }
+servers:
+  - url: /admin/api/v1
+security:
+  - session: []
+  - adminKey: []
+
+paths:
+  /auth/status:
+    get:
+      summary: Whether first-run setup is required
+      security: []
+      responses: { "200": { description: OK, content: { application/json: { schema: { type: object, properties: { setup_required: { type: boolean } } } } } } }
+  /auth/me:
+    get:
+      summary: The current principal (includes the CSRF token for session callers)
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Principal" } } } }, "401": { $ref: "#/components/responses/Error" } }
+  /auth/setup/begin:
+    post: { summary: Begin first-owner passkey registration (setup token), security: [], requestBody: { $ref: "#/components/requestBodies/BeginRegistration" }, responses: { "200": { $ref: "#/components/responses/Ceremony" } } }
+  /auth/invite/begin:
+    post: { summary: Begin passkey registration with an invite token, security: [], requestBody: { $ref: "#/components/requestBodies/BeginRegistration" }, responses: { "200": { $ref: "#/components/responses/Ceremony" } } }
+  /auth/passkeys/begin:
+    post: { summary: Add another passkey to the signed-in user, responses: { "200": { $ref: "#/components/responses/Ceremony" } } }
+  /auth/register/finish:
+    post: { summary: Finish a passkey registration (sets the session cookie for new users), security: [], requestBody: { $ref: "#/components/requestBodies/FinishCeremony" }, responses: { "200": { description: OK } } }
+  /auth/login/begin:
+    post: { summary: Begin a usernameless passkey login, security: [], responses: { "200": { $ref: "#/components/responses/Ceremony" } } }
+  /auth/login/finish:
+    post: { summary: Finish a passkey login (sets the session cookie), security: [], requestBody: { $ref: "#/components/requestBodies/FinishCeremony" }, responses: { "200": { description: OK }, "401": { $ref: "#/components/responses/Error" } } }
+  /auth/logout:
+    post: { summary: End the session, responses: { "200": { description: OK } } }
+
+  /overview:
+    get: { summary: Dashboard overview counts, x-min-role: viewer, responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Overview" } } } } } }
+  /catalog:
+    get: { summary: Server presets, x-min-role: viewer, responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CatalogEntry" } } } } } } }
+
+  /servers:
+    get: { summary: List servers, x-min-role: viewer, responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Server" } } } } } } }
+    post: { summary: Create a server, x-min-role: admin, requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Server" } } } }, responses: { "201": { description: Created }, "400": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" } } }
+  /servers/{id}:
+    parameters: [{ $ref: "#/components/parameters/ServerID" }]
+    get: { summary: Get a server, x-min-role: viewer, responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/Error" } } }
+    put: { summary: Replace a server, x-min-role: admin, requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Server" } } } }, responses: { "200": { description: OK } } }
+    delete: { summary: Delete a server and its credentials, x-min-role: admin, responses: { "200": { description: OK } } }
+  /servers/{id}/tools:
+    parameters: [{ $ref: "#/components/parameters/ServerID" }]
+    get: { summary: Known tools with pin status, x-min-role: viewer, responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ToolPin" } } } } } } }
+  /servers/{id}/test:
+    parameters: [{ $ref: "#/components/parameters/ServerID" }, { name: as, in: query, schema: { type: string, enum: [me, shared] } }]
+    post: { summary: Test the connection (updates health), x-min-role: member, responses: { "200": { description: OK, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, tools: { type: integer }, error: { type: string } } } } } } } }
+  /servers/{id}/credentials:
+    parameters: [{ $ref: "#/components/parameters/ServerID" }]
+    get: { summary: Credential metadata (never values), x-min-role: viewer, responses: { "200": { description: OK } } }
+  /servers/{id}/credential:
+    parameters: [{ $ref: "#/components/parameters/ServerID" }]
+    put: { summary: Set a credential (scope me, or shared for admin+), x-min-role: member, requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/CredentialInput" } } } }, responses: { "200": { description: OK } } }
+    delete: { summary: Delete a credential, x-min-role: member, parameters: [{ name: scope, in: query, schema: { type: string, enum: [me, shared] } }], responses: { "200": { description: OK } } }
+  /servers/{id}/oauth-app:
+    parameters: [{ $ref: "#/components/parameters/ServerID" }]
+    put: { summary: Configure the gateway's OAuth client at the upstream, x-min-role: admin, responses: { "200": { description: OK } } }
+  /servers/{id}/connect:
+    parameters: [{ $ref: "#/components/parameters/ServerID" }]
+    post: { summary: Start the upstream OAuth flow, x-min-role: member, responses: { "200": { description: OK, content: { application/json: { schema: { type: object, properties: { authorize_url: { type: string } } } } } } } }
+
+  /clients:
+    get: { summary: List AI tools (members see their own), x-min-role: viewer, responses: { "200": { description: OK } } }
+    post:
+      summary: Create an AI-tool token (shown once) with ready-made config snippets
+      x-min-role: member
+      requestBody: { content: { application/json: { schema: { type: object, required: [name, profile], properties: { name: { type: string }, profile: { type: string } } } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { type: object, properties: { token: { type: string }, client: { $ref: "#/components/schemas/Client" }, snippets: { type: object, additionalProperties: { type: string } } } } } } } }
+  /clients/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    patch: { summary: Change an AI tool's profile, x-min-role: member, responses: { "200": { description: OK } } }
+    delete: { summary: Revoke an AI tool, x-min-role: member, responses: { "200": { description: OK } } }
+
+  /profiles:
+    get: { summary: List profiles, x-min-role: viewer, responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Profile" } } } } } } }
+  /profiles/{name}:
+    parameters: [{ name: name, in: path, required: true, schema: { type: string } }]
+    put: { summary: Create or replace a profile, x-min-role: admin, requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Profile" } } } }, responses: { "200": { description: OK }, "400": { $ref: "#/components/responses/Error" } } }
+    delete: { summary: Delete a profile, x-min-role: admin, responses: { "200": { description: OK } } }
+  /profiles/simulate:
+    post: { summary: Evaluate policy for a hypothetical call, x-min-role: viewer, responses: { "200": { description: OK } } }
+
+  /approvals:
+    get: { summary: List approvals, x-min-role: viewer, parameters: [{ name: status, in: query, schema: { type: string, enum: [pending, approved, denied, expired] } }], responses: { "200": { description: OK } } }
+  /approvals/{id}/decide:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { summary: Approve or deny (always=true adds an allow rule; admin only), x-min-role: member, requestBody: { content: { application/json: { schema: { type: object, properties: { approve: { type: boolean }, always: { type: boolean } } } } } }, responses: { "200": { description: OK }, "409": { $ref: "#/components/responses/Error" } } }
+
+  /pins/changes:
+    get: { summary: Tools whose definition changed (quarantined), x-min-role: viewer, responses: { "200": { description: OK } } }
+  /pins/{server}/{tool}/accept:
+    parameters: [{ name: server, in: path, required: true, schema: { type: string } }, { name: tool, in: path, required: true, schema: { type: string } }]
+    post: { summary: Accept the new definition, x-min-role: admin, responses: { "200": { description: OK } } }
+  /pins/{server}/{tool}/reject:
+    parameters: [{ name: server, in: path, required: true, schema: { type: string } }, { name: tool, in: path, required: true, schema: { type: string } }]
+    post: { summary: Keep the tool quarantined, x-min-role: admin, responses: { "200": { description: OK } } }
+
+  /audit:
+    get:
+      summary: Query audit events, newest first
+      x-min-role: viewer
+      parameters:
+        - { name: client, in: query, schema: { type: string } }
+        - { name: server, in: query, schema: { type: string } }
+        - { name: tool, in: query, schema: { type: string } }
+        - { name: decision, in: query, schema: { type: string } }
+        - { name: kind, in: query, schema: { type: string, enum: [call, admin] } }
+        - { name: before, in: query, description: cursor (event id), schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500 } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+        - { name: until, in: query, schema: { type: string, format: date-time } }
+      responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AuditEvent" } } } } } }
+  /audit/verify:
+    get: { summary: Verify the hash chain, x-min-role: viewer, responses: { "200": { description: OK, content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, checked: { type: integer }, broken_at: { type: integer } } } } } } } }
+  /audit/export:
+    get: { summary: Export as NDJSON, x-min-role: admin, responses: { "200": { description: OK, content: { application/x-ndjson: {} } } } }
+
+  /users:
+    get: { summary: List users, x-min-role: admin, responses: { "200": { description: OK } } }
+  /users/invites:
+    post: { summary: Create a one-time invite link, x-min-role: owner, responses: { "200": { description: OK } } }
+  /users/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    patch: { summary: Change a user's role, x-min-role: owner, responses: { "200": { description: OK } } }
+    delete: { summary: Delete a user, x-min-role: owner, responses: { "200": { description: OK } } }
+  /keys:
+    get: { summary: List admin API keys, x-min-role: owner, responses: { "200": { description: OK } } }
+    post: { summary: Create an admin API key (shown once), x-min-role: owner, responses: { "200": { description: OK } } }
+  /keys/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    delete: { summary: Revoke an admin API key, x-min-role: owner, responses: { "200": { description: OK } } }
+
+  /security:
+    get: { summary: Key provider and signing key status, x-min-role: viewer, responses: { "200": { description: OK } } }
+  /security/rotate-signing-key:
+    post: { summary: Rotate the token signing key, x-min-role: owner, responses: { "200": { description: OK } } }
+  /config/export:
+    get: { summary: Export servers and profiles as YAML (no secrets), x-min-role: admin, responses: { "200": { description: OK, content: { application/yaml: {} } } } }
+  /config/import:
+    post: { summary: Atomically replace servers and profiles from YAML, x-min-role: owner, requestBody: { content: { application/yaml: {} } }, responses: { "200": { description: OK }, "400": { $ref: "#/components/responses/Error" } } }
+  /events:
+    get: { summary: "Server-Sent Events: approval.created, approval.decided, audit.event, server.health, config.changed", x-min-role: viewer, responses: { "200": { description: OK, content: { text/event-stream: {} } } } }
+
+components:
+  securitySchemes:
+    session: { type: apiKey, in: cookie, name: gw_session }
+    adminKey: { type: http, scheme: bearer, description: "Admin API key: gwa_…" }
+  parameters:
+    ServerID: { name: id, in: path, required: true, schema: { type: string } }
+  requestBodies:
+    BeginRegistration:
+      content: { application/json: { schema: { type: object, properties: { token: { type: string }, name: { type: string } } } } }
+    FinishCeremony:
+      content: { application/json: { schema: { type: object, required: [ceremony, credential], properties: { ceremony: { type: string }, credential: { type: object } } } } }
+  responses:
+    Error:
+      description: Error
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Ceremony:
+      description: WebAuthn options
+      content: { application/json: { schema: { type: object, properties: { ceremony: { type: string }, options: { type: object } } } } }
+  schemas:
+    Error:
+      type: object
+      properties: { error: { type: object, properties: { code: { type: string }, message: { type: string } } } }
+    Principal:
+      type: object
+      properties: { user_id: { type: string }, name: { type: string }, role: { $ref: "#/components/schemas/Role" }, csrf: { type: string }, via_session: { type: boolean } }
+    Role: { type: string, enum: [owner, admin, member, viewer] }
+    Server:
+      type: object
+      required: [name, prefix, transport]
+      properties:
+        id: { type: string, pattern: "^[a-z0-9_-]{1,64}$" }
+        name: { type: string }
+        prefix: { type: string, pattern: "^[a-z0-9_]{1,32}$" }
+        transport: { type: string, enum: [http, stdio] }
+        url: { type: string }
+        command: { type: string }
+        args: { type: array, items: { type: string } }
+        auth_kind: { type: string, enum: [none, bearer, header, env, oauth] }
+        enabled: { type: boolean }
+        timeout_seconds: { type: integer }
+        health: { type: string, readOnly: true }
+    CatalogEntry:
+      type: object
+      properties: { description: { type: string }, docs: { type: string }, server: { $ref: "#/components/schemas/Server" }, rules: { type: array, items: { $ref: "#/components/schemas/Rule" } } }
+    Rule:
+      type: object
+      required: [tool, action]
+      properties: { tool: { type: string }, when: { type: string, enum: [any, read_only, write] }, action: { type: string, enum: [allow, ask, deny] } }
+    Profile:
+      type: object
+      properties:
+        name: { type: string }
+        servers: { type: array, items: { type: string } }
+        rules: { type: array, items: { $ref: "#/components/schemas/Rule" } }
+        rate_limit: { type: object, properties: { per_minute: { type: integer } } }
+    CredentialInput:
+      type: object
+      required: [kind]
+      properties:
+        scope: { type: string, enum: [me, shared] }
+        kind: { type: string, enum: [bearer, header, env] }
+        token: { type: string, writeOnly: true }
+        header_name: { type: string }
+        header_value: { type: string, writeOnly: true }
+        env: { type: object, additionalProperties: { type: string }, writeOnly: true }
+    Client:
+      type: object
+      properties: { id: { type: string }, user_id: { type: string }, name: { type: string }, profile: { type: string }, kind: { type: string, enum: [static, oauth] }, created_at: { type: string }, last_seen_at: { type: string }, revoked_at: { type: string } }
+    ToolPin:
+      type: object
+      properties: { server_id: { type: string }, tool: { type: string }, status: { type: string, enum: [approved, quarantined] }, description: { type: string }, read_only: { type: boolean }, old_description: { type: string }, new_description: { type: string } }
+    AuditEvent:
+      type: object
+      properties: { id: { type: integer }, time: { type: string }, kind: { type: string }, user_id: { type: string }, client_id: { type: string }, profile: { type: string }, server_id: { type: string }, tool: { type: string }, decision: { type: string }, status: { type: string }, latency_ms: { type: integer }, summary: { type: string }, hash: { type: string }, prev_hash: { type: string } }
+    Overview:
+      type: object
+      properties: { servers: { type: integer }, clients: { type: integer }, calls_today: { type: integer }, blocked_today: { type: integer }, pending_approvals: { type: integer }, pin_changes: { type: integer }, needs_reauth: { type: array, items: { type: string } }, servers_down: { type: array, items: { type: string } } }

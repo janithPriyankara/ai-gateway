@@ -1,0 +1,11 @@
+description: Sentry's hosted MCP server (issues, errors, releases). Uses OAuth.
+docs: https://docs.sentry.io/product/sentry-mcp/
+server:
+  name: Sentry
+  prefix: sentry
+  transport: http
+  url: https://mcp.sentry.dev/mcp
+  auth_kind: oauth
+rules:
+  - { tool: "sentry__*", when: read_only, action: allow }
+  - { tool: "sentry__*", action: ask }

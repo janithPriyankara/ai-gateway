@@ -1,0 +1,36 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions: { contents: read }
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - run: go vet ./...
+      - run: go test -race -count=1 ./internal/...
+      - run: go build -o bin/gw ./cmd/gw
+      - run: cd test/blackbox && go test -count=1 .
+      - run: ./scripts/spec-check.sh
+  web-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: cd web && npm ci && npm run typecheck && npm run build
+      - run: go build -o bin/gw ./cmd/gw
+      - run: cd test/e2e && npm ci && npx playwright install --with-deps chromium && npx playwright test
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - run: cd test/blackbox && GW_DOCKER_TESTS=1 go test -count=1 -run Docker -v .
+      - run: make test-split

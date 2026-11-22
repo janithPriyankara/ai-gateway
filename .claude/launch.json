@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "gw", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "GW_DATA_DIR=.demo-data GW_KEY_PROVIDER=passphrase GW_PASSPHRASE=local-demo-only exec ./bin/gw serve"], "port": 8787, "url": "http://localhost:8787" },
+    { "name": "docs", "runtimeExecutable": "python3", "runtimeArgs": ["-m", "http.server", "8790", "--bind", "127.0.0.1", "--directory", "docs"], "port": 8790 }
+  ]
+}

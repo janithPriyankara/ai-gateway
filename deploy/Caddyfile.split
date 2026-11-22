@@ -1,0 +1,29 @@
+{
+	admin off
+	auto_https off
+}
+:8787 {
+	@internal path /internal/*
+	respond @internal 404
+	handle /mcp* {
+		reverse_proxy {
+			dynamic a gateway 8787
+			lb_policy round_robin
+			fail_duration 10s
+		}
+	}
+	handle /.well-known/* {
+		reverse_proxy auth:8787
+	}
+	handle /oauth/* {
+		reverse_proxy auth:8787
+	}
+	handle /admin/api/v1/auth/* {
+		reverse_proxy auth:8787
+	}
+	handle {
+		reverse_proxy control:8787 {
+			flush_interval -1
+		}
+	}
+}
