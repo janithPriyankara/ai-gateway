@@ -27,6 +27,7 @@ import (
 	"github.com/mcp-gateway/mcp-gateway/internal/services/control"
 	"github.com/mcp-gateway/mcp-gateway/internal/services/gateway"
 	"github.com/mcp-gateway/mcp-gateway/internal/services/vault"
+	"github.com/mcp-gateway/mcp-gateway/internal/tlsx"
 	"github.com/mcp-gateway/mcp-gateway/web"
 )
 
@@ -45,6 +46,8 @@ var AllServices = []string{SvcGateway, SvcAuth, SvcVault, SvcControl}
 type Config struct {
 	Listen            string
 	PublicURL         string
+	TLS               string // off | local | files (DEP-010, DEP-013)
+	TLSCert, TLSKey   string
 	DataDir           string
 	Services          []string
 	KeyProvider       string
@@ -80,6 +83,25 @@ func (c *Config) Validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid listen address %q: %w", c.Listen, err)
 	}
+	if c.TLS == "" {
+		c.TLS = tlsx.ModeOff
+		if c.TLSCert != "" || c.TLSKey != "" {
+			c.TLS = tlsx.ModeFiles
+		}
+	}
+	switch c.TLS {
+	case tlsx.ModeOff, tlsx.ModeLocal:
+	case tlsx.ModeFiles:
+		if c.TLSCert == "" || c.TLSKey == "" {
+			return errors.New("--tls=files needs both --tls-cert and --tls-key")
+		}
+	default:
+		return fmt.Errorf("unknown TLS mode %q (use off, local or files)", c.TLS)
+	}
+	scheme := "http"
+	if c.TLS != tlsx.ModeOff {
+		scheme = "https"
+	}
 	loopback := host == "localhost" || (net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback())
 	if c.PublicURL == "" {
 		if !loopback {
@@ -87,11 +109,17 @@ func (c *Config) Validate() error {
 		}
 		// Browsers refuse IP addresses as passkey domains, so default to "localhost".
 		_, port, _ := net.SplitHostPort(c.Listen)
-		c.PublicURL = "http://localhost:" + port
+		c.PublicURL = scheme + "://localhost:" + port
 	}
 	pu, err := url.Parse(c.PublicURL)
 	if err != nil || (pu.Scheme != "http" && pu.Scheme != "https") || pu.Host == "" {
 		return fmt.Errorf("invalid public URL %q", c.PublicURL)
+	}
+	if c.TLS != tlsx.ModeOff && pu.Scheme != "https" {
+		return fmt.Errorf("with --tls=%s the public URL must start with https:// (got %q)", c.TLS, c.PublicURL)
+	}
+	if c.TLS == tlsx.ModeLocal && !tlsx.IsLocalHost(pu.Hostname()) {
+		return fmt.Errorf("--tls=local only covers localhost; for %s use --tls=files with a real certificate, or a reverse proxy", pu.Hostname())
 	}
 	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
 	split := len(c.Services) < len(AllServices)

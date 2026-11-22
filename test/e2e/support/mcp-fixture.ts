@@ -77,6 +77,11 @@ export async function startFixture(): Promise<Fixture> {
         res.writeHead(405, { allow: 'POST' }).end();
         return;
       }
+      // Instances named basic_* behave like Jenkins: only HTTP Basic e2e-user:e2e-token gets in.
+      if (m[1].startsWith('basic_') && req.headers.authorization !== 'Basic ' + Buffer.from('e2e-user:e2e-token').toString('base64')) {
+        res.writeHead(401, { 'content-type': 'text/plain' }).end('Unauthorized');
+        return;
+      }
       const raw = await readBody(req);
       const mcp = buildServer(m[1]);
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });

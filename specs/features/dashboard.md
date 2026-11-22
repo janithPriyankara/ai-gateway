@@ -19,3 +19,6 @@ The dashboard is a single-page app served at `/admin`, using only the Admin API 
 - **UI-013** Viewer role sees every page read-only: no create, edit, delete or decide buttons.
 - **UI-014** Works in light and dark mode, is usable at 375 px width, and every interactive control is reachable by keyboard with a visible focus ring.
 - **UI-015** Errors from the API are shown as a readable message; the UI never shows raw stack traces.
+- **UI-016** The profile editor warns when the profile reaches no servers ("AI tools using this profile see no tools"), and when a rule names a server (the prefix before `__`) that is not checked, listing those servers with a button that checks them. The warning updates as boxes are checked and disappears when nothing is missing. Read-only viewers see the warning without the button.
+- **UI-017** A server whose credential was rejected (the server answers but refuses the stored credential) shows "Credential rejected" instead of "Healthy", on the servers list and the server page, and the credential row says to save a new one.
+- **UI-018** The credential form puts the credential above the tool list, explains each type, offers "Username + API token (Basic)" which builds the `Authorization: Basic` header in the browser, trims pasted whitespace, and warns when a custom `Authorization` value has no scheme such as `Basic ` or `Bearer `.

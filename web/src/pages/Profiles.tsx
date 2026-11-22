@@ -208,6 +208,19 @@ function ProfileEditor({
     return [...servers.map((s) => ({ id: s.id, name: s.name, prefix: s.prefix })), ...srv.filter((id) => !ids.has(id)).map((id) => ({ id, name: id, prefix: '' }))];
   }, [servers, srv]);
 
+  // UI-016: rules that name a server the profile can't reach do nothing.
+  const missing = useMemo(() => {
+    const byPrefix = new Map(servers.map((s) => [s.prefix, s]));
+    const out = new Map<string, Server>();
+    for (const r of rules) {
+      const i = r.tool.indexOf('__');
+      if (i <= 0) continue;
+      const s = byPrefix.get(r.tool.slice(0, i));
+      if (s && !srv.includes(s.id)) out.set(s.id, s);
+    }
+    return [...out.values()];
+  }, [rules, servers, srv]);
+  const noServers = srv.length === 0 && servers.length > 0;
   return (
     <section className="card" aria-labelledby="pe-h">
       <div className="row" style={{ marginBottom: 12 }}>
@@ -223,6 +236,24 @@ function ProfileEditor({
       {saved && <Notice kind="success">Profile saved.</Notice>}
       <ErrorNotice error={err} />
 
+      {(noServers || missing.length > 0) && (
+        <div data-testid="profile-server-warning">
+          <Notice kind="warn">
+            {noServers && <><strong>No servers are checked, so AI tools using this profile see no tools.</strong> </>}
+            {missing.length > 0 && (
+              <>
+                Rules mention {missing.map((s, i) => <span key={s.id}>{i > 0 && ', '}<strong>{s.name}</strong></span>)}, but{' '}
+                {missing.length === 1 ? 'that server isn\u2019t' : 'those servers aren\u2019t'} checked, so {missing.length === 1 ? 'its' : 'their'} tools are hidden.{' '}
+                {!readOnly && (
+                  <button type="button" className="sm" onClick={() => { setSrv((cur) => [...cur, ...missing.map((s) => s.id)]); setDirty(); }}>
+                    Check these servers
+                  </button>
+                )}
+              </>
+            )}
+          </Notice>
+        </div>
+      )}
       <h3>Servers</h3>
       {allServers.length === 0 ? (
         <p className="muted small">No servers yet.</p>
@@ -262,7 +293,7 @@ function ProfileEditor({
                 <td className="muted">{i + 1}</td>
                 <td>
                   {readOnly ? <code>{r.tool}</code> : (
-                    <input id={`rule-tool-${i}`} type="text" value={r.tool} aria-label={`Rule ${i + 1} tool pattern`}
+                    <input id={`rule-tool-${i}`} className="rule-pattern" title={r.tool} type="text" value={r.tool} aria-label={`Rule ${i + 1} tool pattern`}
                       aria-invalid={errRow === i + 1} onChange={(e) => update(i, { tool: e.target.value })} placeholder="server__tool_*" />
                   )}
                   {errRow === i + 1 && <div className="field-error">{err instanceof Error ? err.message : ''}</div>}

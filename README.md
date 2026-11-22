@@ -42,6 +42,12 @@ make web build                       # dashboard + bin/gw
 ./bin/gw serve                       # listens on http://127.0.0.1:8787
 ```
 
+For the Claude app (and any tool that only signs in over HTTPS), serve HTTPS on your machine instead:
+```bash
+./bin/gw trust                       # once: trust the gateway's localhost-only certificate authority
+./bin/gw serve --tls=local           # listens on https://localhost:8787
+```
+The local certificate authority lives in your data directory and can only vouch for `localhost`, `127.0.0.1` and `::1`, so it can't be misused for other sites. Use the same data directory for `gw trust` and `gw serve` (`--data-dir` or `GW_DATA_DIR`).
 The first start prints a one-time link (`/admin/setup?token=…`). Open it, register a passkey, and you're the owner. On macOS the master key is created in your login Keychain automatically. Elsewhere, set one of `GW_MASTER_KEY_FILE`, `GW_MASTER_KEY` or `GW_PASSPHRASE` (run `gw doctor` to check).
 
 ### Docker (all in one)
@@ -64,8 +70,9 @@ docker compose -f deploy/compose.split.yml --env-file deploy/split.env up -d --b
 In the dashboard, go to **AI tools → Connect a tool**. Pick a profile and copy the snippet it shows. For OAuth-capable clients, just add the URL:
 
 ```bash
-claude mcp add --transport http gateway http://127.0.0.1:8787/mcp   # then /mcp to sign in once
+claude mcp add --transport http --scope user gateway https://localhost:8787/mcp   # then /mcp to sign in once
 ```
+The Claude app only opens sign-in pages over HTTPS, so run the gateway with `--tls=local` (see Quick start). Without HTTPS, create a token in the dashboard and pass it with `--header "Authorization: Bearer gw_…"` instead. If a Node-based tool still rejects the certificate, point it at the CA file: `NODE_EXTRA_CA_CERTS=$(gw trust --print)`.
 
 - **claude.ai / Claude Desktop:** Settings → Connectors → Add custom connector → your gateway's public HTTPS URL + `/mcp`. claude.ai connects from the cloud, so expose the gateway with Cloudflare Tunnel, Tailscale Funnel or a reverse proxy, and set `GW_PUBLIC_URL`.
 - **Codex:** use the `[mcp_servers.gateway]` snippet from the dashboard (static token via `bearer_token_env_var`).
@@ -77,7 +84,8 @@ Every flag has a `GW_*` environment variable. Run `gw serve -h` for the full lis
 | Variable | Default | Meaning |
 |---|---|---|
 | `GW_LISTEN` | `127.0.0.1:8787` | Listen address. Non-loopback addresses require `GW_PUBLIC_URL`. |
-| `GW_PUBLIC_URL` | `http://<listen>` | The URL clients use (OAuth issuer, MCP resource). |
+| `GW_PUBLIC_URL` | `http(s)://localhost:<port>` | The URL clients use (OAuth issuer, MCP resource). |
+| `GW_TLS` | `off` | `local` serves HTTPS with the gateway's own localhost-only certificate authority (run `gw trust` once). `files` serves `GW_TLS_CERT` and `GW_TLS_KEY`, reloaded when they change on disk. |
 | `GW_DATA_DIR` | OS config dir | Where `auth.db`, `vault.db` and `control.db` live. |
 | `GW_KEY_PROVIDER` | `auto` | `macos-keychain`, `linux-tpm`, `windows-dpapi`, `file`, `env`, `passphrase`. |
 | `GW_SERVICES` | `all` | Comma list of `gateway,auth,vault,control` for microservices mode. |

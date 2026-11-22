@@ -365,7 +365,12 @@ func sanitizeSchema(in any) map[string]any {
 // buildServer creates the aggregated MCP server for a profile (GW-003, GW-004).
 func (g *Gateway) buildServer(rt *runtime, profile string) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "mcp-gateway", Title: "MCP Gateway", Version: g.o.Version},
-		&mcp.ServerOptions{Instructions: "Tools from several MCP servers, namespaced as <server>__<tool>. Some calls may wait for human approval."})
+		&mcp.ServerOptions{
+			Instructions: "Tools from several MCP servers, namespaced as <server>__<tool>. Some calls may wait for human approval.",
+			// GW-019: advertise tools even when none are loaded yet, or clients never ask.
+			// listChanged is false: the endpoint is stateless and cannot push notifications.
+			Capabilities: &mcp.ServerCapabilities{Logging: &mcp.LoggingCapabilities{}, Tools: &mcp.ToolCapabilities{}},
+		})
 	registered := map[string]bool{}
 	// Calls to hidden tools (denied, quarantined, unknown) get an audited tool error
 	// instead of a bare protocol error (GW-006, GW-011).

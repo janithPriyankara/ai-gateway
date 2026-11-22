@@ -3,24 +3,26 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import * as api from '../api';
 import type { Server } from '../api';
 import { useLiveRefresh, useSession } from '../session';
-import { Confirm, Empty, ErrorNotice, HealthBadge, Loading, Notice, PageHead, useLoad } from '../components/ui';
+import { Confirm, Empty, ErrorNotice, HealthBadge, Loading, Notice, PageHead, effectiveHealth, useLoad } from '../components/ui';
 import { ServerDialog } from '../components/ServerForm';
 import { IconPlus } from '../icons';
 
 interface Row extends Server {
   toolCount: number | null;
+  creds: api.CredentialInfo[] | null;
 }
 
 async function load(): Promise<Row[]> {
   const servers = await api.listServers();
-  const counts = await Promise.all(
-    servers.map((s) => api.listServerTools(s.id).then((t) => t.length).catch(() => null)),
-  );
-  return servers.map((s, i) => ({ ...s, toolCount: counts[i] }));
+  const [counts, creds] = await Promise.all([
+    Promise.all(servers.map((s) => api.listServerTools(s.id).then((t) => t.length).catch(() => null))),
+    Promise.all(servers.map((s) => (s.auth_kind === 'none' ? Promise.resolve([]) : api.listCredentials(s.id).catch(() => null)))),
+  ]);
+  return servers.map((s, i) => ({ ...s, toolCount: counts[i], creds: creds[i] }));
 }
 
 export default function ServersPage() {
-  const { can } = useSession();
+  const { can, me } = useSession();
   const isAdmin = can('admin');
   const nav = useNavigate();
   const [params] = useSearchParams();
@@ -79,7 +81,7 @@ export default function ServersPage() {
                     <div className="muted small"><code>{s.prefix}__*</code>{!s.enabled && ' · disabled'}</div>
                   </td>
                   <td><span className="badge">{s.transport}</span></td>
-                  <td><HealthBadge health={s.health} /></td>
+                  <td><HealthBadge health={effectiveHealth(s, s.creds, me.user_id)} /></td>
                   <td>{s.toolCount ?? '-'}</td>
                   <td className="actions">
                     {isAdmin && (

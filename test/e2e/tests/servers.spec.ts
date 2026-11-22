@@ -97,3 +97,44 @@ test('[UI-004] server detail lists tools with read-only/write and pin badges; a 
   await page.goto(`/admin/servers/${bid}?connected=1`);
   await expect(page.getByText('Connected. The gateway stored your OAuth credential')).toBeVisible();
 });
+test('[UI-017] [UI-018] a rejected credential is flagged; Username + API token signs in with Basic; a schemeless Authorization value is warned about', async ({ page }) => {
+  const prefix = 'basic_' + uid();
+  const id = await seedFixtureServer(prefix, { auth_kind: 'bearer' });
+  await page.goto(`/admin/servers/${id}`);
+  const card = page.getByRole('region', { name: 'Credential' });
+  // The credential comes before the tool list.
+  const credY = (await card.boundingBox())!.y;
+  const toolsY = (await page.getByRole('heading', { name: 'Tools', exact: true }).boundingBox())!.y;
+  expect(credY).toBeLessThan(toolsY);
+  // A bearer token is the wrong kind for this server: it is rejected and flagged.
+  await card.getByLabel('Token').fill('not-what-it-wants');
+  await card.getByRole('button', { name: 'Save credential' }).click();
+  await expect(card.getByText('Credential saved.')).toBeVisible();
+  await page.getByRole('button', { name: 'Test connection' }).click();
+  await expect(page.getByText(/Connection failed/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Credential rejected').first()).toBeVisible();
+  await expect(card.getByTestId('cred-rejected')).toContainText('save a new one');
+  await page.goto('/admin/servers');
+  await expect(page.getByTestId(`server-row-${id}`)).toContainText('Credential rejected');
+  // A custom Authorization header without a scheme is warned about before saving.
+  await page.goto(`/admin/servers/${id}`);
+  await card.getByLabel('Type').selectOption('header');
+  await card.getByLabel('Header name').fill('Authorization');
+  await card.getByLabel('Header value').fill('ZTJlLXVzZXI6ZTJlLXRva2Vu');
+  await expect(card.getByTestId('cred-scheme-warning')).toBeVisible();
+  await card.getByLabel('Header value').fill('Basic ZTJlLXVzZXI6ZTJlLXRva2Vu');
+  await expect(card.getByTestId('cred-scheme-warning')).toHaveCount(0);
+  // Username + API token builds the Basic header; pasted whitespace is trimmed.
+  await card.getByLabel('Type').selectOption('basic');
+  await expect(card.getByTestId('cred-help')).toContainText('Jenkins');
+  await card.getByLabel('Username').fill('e2e-user');
+  await card.getByLabel('API token').fill('  e2e-token\n');
+  await card.getByRole('button', { name: 'Replace credential' }).click();
+  await expect(card.getByText('Credential saved.')).toBeVisible();
+  await page.getByRole('button', { name: 'Test connection' }).click();
+  await expect(page.getByText(/Connected\. \d+ tools found\./)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Credential rejected')).toHaveCount(0);
+  await expect(card.getByRole('listitem').filter({ hasText: 'Your credential' })).toContainText('Set');
+});

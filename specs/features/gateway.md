@@ -20,3 +20,4 @@
 - **GW-016** Gateway overhead (excluding upstream time) is under 2 ms p50 for `tools/call` against an in-memory upstream (benchmark).
 - **GW-017** The DNS-rebinding and Origin protections are on: requests with a disallowed `Origin` are rejected.
 - **GW-018** The tool's current fingerprint is compared with its pinned fingerprint (CTL-011) on every `tools/list` refresh; drift quarantines the tool.
+- **GW-019** `initialize` always advertises the tools capability, even when the caller's profile has no tools yet (no servers checked, or upstreams slow or down). Otherwise clients never call `tools/list` and stay at zero tools after the profile is fixed.

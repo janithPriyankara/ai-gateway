@@ -140,14 +140,14 @@ export default function ActivityPage() {
               <tbody>
                 {events.map((e) => (
                   <tr key={e.id} data-testid="audit-row">
-                    <td style={{ whiteSpace: 'nowrap' }}>{formatTime(e.time)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatTime(e.time, { seconds: true })}</td>
                     <td>{e.kind}</td>
                     <td>{e.tool ? <code>{e.tool}</code> : <span className="muted">-</span>}</td>
                     <td>{clientName(clients.data, e.client_id)}</td>
                     <td>{e.decision && e.decision !== '-' ? <DecisionBadge decision={e.decision} /> : <span className="muted">-</span>}</td>
                     <td>{e.status}</td>
                     <td>{e.kind === 'call' ? `${e.latency_ms} ms` : ''}</td>
-                    <td className="desc" style={{ maxWidth: 360, wordBreak: 'break-word' }}><span className="small">{e.summary}</span></td>
+                    <td style={{ maxWidth: 360 }}><div className="desc small clamp-2" style={{ wordBreak: 'break-word' }} title={e.summary}>{e.summary}</div></td>
                   </tr>
                 ))}
               </tbody>

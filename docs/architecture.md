@@ -46,7 +46,10 @@ MCP clients expect discovery (RFC 9728 / 8414), dynamic registration (RFC 7591) 
 ### 6. Trust on first use for tools, with drift quarantine
 Tool descriptions are part of the prompt the model sees, which makes them an attack surface. Fingerprints use canonical JSON so key order does not matter. A changed tool disappears from `tools/list` and calls to it are refused until a human accepts the change. Strict mode quarantines new tools too.
 
-### 7. Spec-driven development
+### 7. Built-in HTTPS with a localhost-only certificate authority
+Some AI apps only open sign-in pages over HTTPS, even for `localhost`. `--tls=local` creates a certificate authority once per data directory and issues 90-day server certificates from it, renewed in memory. The CA is name-constrained to `localhost`, `127.0.0.0/8` and `::1`, so trusting it (`gw trust`) can't be abused to impersonate other sites even if its key leaks. Public deployments use `--tls=files` (hot-reloaded, certbot-friendly) or a TLS-terminating proxy.
+
+### 8. Spec-driven development
 `specs/features/*.md` holds numbered acceptance criteria. Every criterion is cited by at least one test, and `scripts/spec-check.sh` enforces it in CI. Test layers: unit → in-process integration (real services, real MCP servers) → black-box (compiled binary over HTTP only) → Playwright (real browser) → Docker (image and microservices stack).
 
 ## Extending

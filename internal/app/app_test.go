@@ -57,8 +57,37 @@ func TestConfigValidation(t *testing.T) {
 	}
 	c := Config{Listen: "127.0.0.1:8787"}
 	c.Validate()
-	if c.PublicURL != "http://localhost:8787" || len(c.Services) != 4 {
+	if c.PublicURL != "http://localhost:8787" || len(c.Services) != 4 || c.TLS != "off" {
 		t.Errorf("defaults: %+v", c)
+	}
+}
+
+// spec: DEP-010, DEP-011, DEP-013, DEP-014
+func TestTLSConfigValidation(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  Config
+		ok   bool
+		tls  string
+		url  string
+	}{
+		{"local defaults to https localhost", Config{Listen: "127.0.0.1:8787", TLS: "local"}, true, "local", "https://localhost:8787"},
+		{"local with a localhost URL", Config{Listen: "127.0.0.1:9", TLS: "local", PublicURL: "https://gw.localhost:9"}, true, "local", "https://gw.localhost:9"},
+		{"local refuses a non-local host", Config{Listen: "0.0.0.0:9", TLS: "local", PublicURL: "https://gw.example.com"}, false, "", ""},
+		{"tls refuses an http public URL", Config{Listen: "127.0.0.1:9", TLS: "local", PublicURL: "http://localhost:9"}, false, "", ""},
+		{"files needs cert and key", Config{Listen: "127.0.0.1:9", TLS: "files", TLSCert: "c.pem"}, false, "", ""},
+		{"cert alone implies files", Config{Listen: "127.0.0.1:9", TLSCert: "c.pem", TLSKey: "k.pem"}, true, "files", "https://localhost:9"},
+		{"unknown mode", Config{Listen: "127.0.0.1:9", TLS: "maybe"}, false, "", ""},
+	}
+	for _, c := range cases {
+		err := c.cfg.Validate()
+		if (err == nil) != c.ok {
+			t.Errorf("%s: err=%v", c.name, err)
+			continue
+		}
+		if c.ok && (c.cfg.TLS != c.tls || c.cfg.PublicURL != c.url) {
+			t.Errorf("%s: tls=%q url=%q", c.name, c.cfg.TLS, c.cfg.PublicURL)
+		}
 	}
 }
 

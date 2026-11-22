@@ -3,14 +3,14 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import * as api from '../api';
 import type { Credential, CredentialInfo, Server, ToolPin } from '../api';
 import { useLiveRefresh, useSession } from '../session';
-import { Confirm, Empty, ErrorNotice, HealthBadge, Loading, Notice, PageHead, formatTime, useLoad } from '../components/ui';
+import { Confirm, Empty, ErrorNotice, HealthBadge, Loading, Notice, PageHead, effectiveHealth, formatTime, useLoad } from '../components/ui';
 import { ServerDialog } from '../components/ServerForm';
 
 export default function ServerDetailPage() {
   const { id = '' } = useParams();
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
-  const { can } = useSession();
+  const { can, me } = useSession();
   const server = useLoad(() => api.getServer(id), [id]);
   const tools = useLoad(() => api.listServerTools(id), [id]);
   const creds = useLoad(() => api.listCredentials(id), [id]);
@@ -36,6 +36,7 @@ export default function ServerDetailPage() {
     );
   }
   const s = server.data;
+  const health = effectiveHealth(s, creds.data, me.user_id);
 
   const test = async () => {
     setTesting(true);
@@ -70,7 +71,7 @@ export default function ServerDetailPage() {
         sub={<><code>{s.prefix}__*</code> · {s.transport === 'http' ? s.url : [s.command, ...(s.args ?? [])].join(' ')}</>}
         actions={
           <>
-            <HealthBadge health={s.health} />
+            <HealthBadge health={health} />
             {can('member') && (
               <button type="button" onClick={test} disabled={testing}>
                 {testing ? 'Testing…' : 'Test connection'}
@@ -93,6 +94,9 @@ export default function ServerDetailPage() {
       {testResult && <Notice kind={testResult.ok ? 'success' : 'error'}>{testResult.text}</Notice>}
       <ErrorNotice error={actionErr} onDismiss={() => setActionErr(null)} />
 
+      {s.auth_kind !== 'none' && (
+        <CredentialCard server={s} creds={creds.data ?? []} credsError={creds.error} onChanged={() => void creds.reload()} />
+      )}
       <section className="card">
         <h2>Tools</h2>
         <ErrorNotice error={tools.error} />
@@ -114,9 +118,6 @@ export default function ServerDetailPage() {
         )}
       </section>
 
-      {s.auth_kind !== 'none' && (
-        <CredentialCard server={s} creds={creds.data ?? []} credsError={creds.error} onChanged={() => void creds.reload()} />
-      )}
       {s.auth_kind === 'oauth' && can('admin') && <OAuthAppCard server={s} />}
 
       {editing && <ServerDialog initial={s} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); void server.reload(); }} />}
@@ -143,7 +144,7 @@ function ToolRow({ t }: { t: ToolPin }) {
     <tr data-testid={`tool-row-${t.tool}`}>
       <td>
         <code>{t.tool}</code>
-        {t.description && <div className="desc">{t.description}</div>}
+        {t.description && <div className="desc clamp-2" title={t.description}>{t.description}</div>}
       </td>
       <td>{t.read_only ? <span className="badge ok">Read-only</span> : <span className="badge warn">Write</span>}</td>
       <td>
@@ -158,7 +159,21 @@ function ToolRow({ t }: { t: ToolPin }) {
   );
 }
 
-type CredKind = 'bearer' | 'header' | 'env';
+type CredKind = 'bearer' | 'basic' | 'header' | 'env';
+
+const credHelp: Record<CredKind, string> = {
+  bearer: 'Sent as "Authorization: Bearer <token>". Use for GitHub and most APIs with personal access tokens.',
+  basic: 'Sent as "Authorization: Basic …" built from your username and token. Use for Jenkins (your user ID and an API token), Jira and Bitbucket.',
+  header: 'Sent exactly as you type it. Use when the server expects its own header, such as X-API-Key.',
+  env: 'Passed to a local (stdio) server as environment variables.',
+};
+
+function basicHeader(user: string, secret: string): string {
+  const bytes = new TextEncoder().encode(`${user}:${secret}`);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return 'Basic ' + btoa(bin);
+}
 
 function CredentialCard({
   server,
@@ -176,6 +191,7 @@ function CredentialCard({
   const [kind, setKind] = useState<CredKind>(defaultKind);
   const [scope, setScope] = useState<'me' | 'shared'>('me');
   const [token, setToken] = useState('');
+  const [username, setUsername] = useState('');
   const [headerName, setHeaderName] = useState('');
   const [headerValue, setHeaderValue] = useState('');
   const [envText, setEnvText] = useState('');
@@ -193,8 +209,14 @@ function CredentialCard({
     setErr(null);
     setSaved(false);
     let c: Credential;
-    if (kind === 'bearer') c = { kind, token };
-    else if (kind === 'header') c = { kind, header_name: headerName, header_value: headerValue };
+    if (kind === 'bearer') c = { kind, token: token.trim() };
+    else if (kind === 'basic') {
+      if (username.includes(':')) {
+        setErr(new Error('The username cannot contain ":". Use your user ID, as shown in the address of your profile page.'));
+        return;
+      }
+      c = { kind: 'header', header_name: 'Authorization', header_value: basicHeader(username.trim(), token.trim()) };
+    } else if (kind === 'header') c = { kind, header_name: headerName.trim(), header_value: headerValue.trim() };
     else {
       const env: Record<string, string> = {};
       for (const line of envText.split('\n')) {
@@ -214,6 +236,7 @@ function CredentialCard({
       await api.setCredential(server.id, scope, c);
       // The value is write-only: clear it from the form and never show it again.
       setToken('');
+      setUsername('');
       setHeaderValue('');
       setEnvText('');
       setSaved(true);
@@ -233,12 +256,13 @@ function CredentialCard({
         <li>
           <span style={{ flex: 1 }}>Your credential</span>
           {mine ? <><span className="badge ok">Set</span><span className="muted small">updated {formatTime(mine.updated_at)}</span></> : <span className="badge">Not set</span>}
-          {mine && mine.status === 'needs_reauth' && <span className="badge warn">Needs sign-in</span>}
+          {mine && mine.status === 'needs_reauth' && <span className="badge warn" data-testid="cred-rejected">{server.auth_kind === 'oauth' ? 'Needs sign-in' : 'Rejected by the server: save a new one'}</span>}
           {mine && can('member') && <button type="button" className="sm danger" onClick={() => setRemoving('me')}>Remove</button>}
         </li>
         <li>
           <span style={{ flex: 1 }}>Shared credential (used for everyone without their own)</span>
           {shared ? <><span className="badge ok">Set</span><span className="muted small">updated {formatTime(shared.updated_at)}</span></> : <span className="badge">Not set</span>}
+          {shared && shared.status === 'needs_reauth' && <span className="badge warn">{server.auth_kind === 'oauth' ? 'Needs sign-in' : 'Rejected by the server: save a new one'}</span>}
           {shared && can('admin') && <button type="button" className="sm danger" onClick={() => setRemoving('shared')}>Remove</button>}
         </li>
       </ul>
@@ -251,6 +275,7 @@ function CredentialCard({
               <label htmlFor="cred-kind">Type</label>
               <select id="cred-kind" value={kind} onChange={(e) => setKind(e.target.value as CredKind)}>
                 <option value="bearer">Bearer token</option>
+                <option value="basic">Username + API token (Basic)</option>
                 <option value="header">Custom header</option>
                 <option value="env">Environment variables</option>
               </select>
@@ -263,10 +288,23 @@ function CredentialCard({
               </select>
             </div>
           </div>
+          <p className="muted small" data-testid="cred-help">{credHelp[kind]}</p>
           {kind === 'bearer' && (
             <div className="field">
               <label htmlFor="cred-token">Token</label>
               <input id="cred-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" required />
+            </div>
+          )}
+          {kind === 'basic' && (
+            <div className="two-col">
+              <div className="field">
+                <label htmlFor="cred-user">Username</label>
+                <input id="cred-user" type="text" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" placeholder="user ID, not display name" required />
+              </div>
+              <div className="field">
+                <label htmlFor="cred-secret">API token</label>
+                <input id="cred-secret" type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" required />
+              </div>
             </div>
           )}
           {kind === 'header' && (
@@ -280,6 +318,11 @@ function CredentialCard({
                 <input id="cred-hvalue" type="password" value={headerValue} onChange={(e) => setHeaderValue(e.target.value)} autoComplete="off" required />
               </div>
             </div>
+          )}
+          {kind === 'header' && headerName.trim().toLowerCase() === 'authorization' && headerValue.trim() !== '' && !headerValue.trim().includes(' ') && (
+            <Notice kind="warn">
+              <span data-testid="cred-scheme-warning">Authorization values normally start with a scheme, such as <code>Basic </code> or <code>Bearer </code>. Without one, most servers ignore the header. For a username and token, choose <strong>Username + API token</strong> above.</span>
+            </Notice>
           )}
           {kind === 'env' && (
             <div className="field">

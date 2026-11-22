@@ -89,3 +89,37 @@ test('[UI-007] rule simulator shows the decision and the matching rule', async (
   await expect(sim.getByTestId('sim-decision')).toHaveText('deny');
   await expect(sim.getByTestId('sim-result')).toContainText('No rule matched');
 });
+test('[UI-016] warns when rules name servers that are not checked, and fixes it in one click', async ({ page }) => {
+  const a = 'wa_' + uid();
+  const b = 'wb_' + uid();
+  const idA = await seedFixtureServer(a);
+  const idB = await seedFixtureServer(b);
+  const name = 'warn-' + uid();
+  await api('PUT', `/profiles/${name}`, {
+    name,
+    servers: [],
+    rules: [
+      { tool: `${a}__*`, when: 'read_only', action: 'allow' },
+      { tool: `${b}__*`, action: 'ask' },
+      { tool: '*', action: 'deny' },
+    ],
+  });
+  await page.goto('/admin/profiles');
+  await page.getByRole('group', { name: 'Profiles' }).getByRole('button', { name: new RegExp(`^${name}`) }).click();
+  const warn = page.getByTestId('profile-server-warning');
+  await expect(warn).toContainText('AI tools using this profile see no tools');
+  await expect(warn).toContainText(`Fixture ${a}`);
+  await expect(warn).toContainText(`Fixture ${b}`);
+  // Checking one server by hand narrows the warning to the other.
+  await page.getByRole('checkbox', { name: `Fixture ${a}` }).check();
+  await expect(warn).not.toContainText('see no tools');
+  await expect(warn).not.toContainText(`Fixture ${a}`);
+  await expect(warn).toContainText(`Fixture ${b}`);
+  await warn.getByRole('button', { name: 'Check these servers' }).click();
+  await expect(page.getByRole('checkbox', { name: `Fixture ${b}` })).toBeChecked();
+  await expect(warn).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Profile saved.')).toBeVisible();
+  const saved = (await api<Profile[]>('GET', '/profiles')).find((p) => p.name === name);
+  expect(saved?.servers.sort()).toEqual([idA, idB].sort());
+});

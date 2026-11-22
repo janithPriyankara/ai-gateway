@@ -232,6 +232,17 @@ export function Tabs<T extends string>({
   );
 }
 
+// effectiveHealth folds the caller's credential into the server's health: a server that
+// answers but rejects the credential the gateway would use is not "Healthy" (UI-017).
+export function effectiveHealth(
+  s: { health?: string; auth_kind?: string },
+  creds: { user_id: string; status: string }[] | null | undefined,
+  userID: string,
+): string | undefined {
+  const c = creds?.find((x) => x.user_id === userID) ?? creds?.find((x) => x.user_id === '');
+  if (c?.status === 'needs_reauth') return s.auth_kind === 'oauth' ? 'needs_reauth' : 'cred_rejected';
+  return s.health;
+}
 export function HealthBadge({ health }: { health?: string }) {
   switch (health) {
     case 'ok':
@@ -240,6 +251,8 @@ export function HealthBadge({ health }: { health?: string }) {
       return <span className="badge danger"><span className="dot" /> Down</span>;
     case 'needs_reauth':
       return <span className="badge warn"><span className="dot" /> Needs sign-in</span>;
+    case 'cred_rejected':
+      return <span className="badge warn" title="The server answers, but rejected the stored credential. Save a new one on the server page."><span className="dot" /> Credential rejected</span>;
     default:
       return <span className="badge"><span className="dot" /> Unknown</span>;
   }
@@ -250,11 +263,11 @@ export function DecisionBadge({ decision }: { decision: string }) {
   return <span className={`badge ${cls}`}>{decision || '-'}</span>;
 }
 
-export function formatTime(t: string | undefined): string {
+export function formatTime(t: string | undefined, opts: { seconds?: boolean } = {}): string {
   if (isZeroTime(t)) return 'Never';
   const d = new Date(t as string);
   if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: opts.seconds ? 'medium' : 'short' });
 }
 
 export function relativeTime(t: string | undefined): string {

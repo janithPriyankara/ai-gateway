@@ -749,3 +749,22 @@ func TestGatewayOverheadBudget(t *testing.T) {
 }
 
 var _ = errors.New
+
+// spec: GW-019
+func TestToolsCapabilityAlwaysAdvertised(t *testing.T) {
+	e := newEnv(t)
+	p := coding()
+	p.Servers = nil // nothing checked yet, as on a fresh profile
+	must(t, e.ctl.PutProfile(context.Background(), p))
+	waitFor(t, "empty profile", func() bool {
+		cs := e.session()
+		return len(toolNames(t, cs)) == 0
+	})
+	cs := e.session()
+	if cs.InitializeResult().Capabilities.Tools == nil {
+		t.Fatal("no tools capability: clients would never ask for tools, even after servers are checked")
+	}
+	// Once servers are checked, the client's next tools/list shows them.
+	must(t, e.ctl.PutProfile(context.Background(), coding()))
+	waitFor(t, "tools after checking servers", func() bool { return toolNames(t, cs)["github__create_issue"] != nil })
+}
